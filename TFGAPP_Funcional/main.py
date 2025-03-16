@@ -179,79 +179,77 @@ def main():
    # Pestaña 5: Ver Agregaciones
     with tabs[4]:
         st.header("Ver Agregaciones")
-        # Recuperamos todas las agregaciones disponibles
-        agg_groups = db.connection.execute("SELECT * FROM AggregatedRanking").fetchall()
-        if agg_groups:
-            # Creamos un diccionario para el selector: "ID - Algoritmo (Grupo)" -> id
-            agg_options = {}
-            for agg in agg_groups:
-                grupo = db.get_group(agg['grupo_id'])
-                grupo_nombre = grupo["nombre"] if grupo is not None else "Desconocido"
-                label = f"{grupo_nombre} (Grupo: {agg['grupo_id']}) - {agg['algoritmo']} (Agregación: {agg['id']})"
-                agg_options[label] = agg['id']
+        # Selector de grupo: muestra "NombreDelGrupo (Grupo: id)"
+        groups = db.connection.execute("SELECT * FROM RankingGroup").fetchall()
+        if groups:
+            group_options = {f"{group['nombre']} (Grupo: {group['id']})": group['id'] for group in groups}
+            selected_group = st.selectbox("Selecciona el grupo a ver", list(group_options.keys()))
+            group_id = group_options[selected_group]
             
-            selected_agg = st.selectbox("Selecciona el ranking agregado a ver", list(agg_options.keys()))
-            agg_id = agg_options[selected_agg]
-            
-            # Obtenemos el registro de la agregación para saber a qué grupo pertenece
-            cursor = db.connection.cursor()
-            cursor.execute("SELECT * FROM AggregatedRanking WHERE id = ?", (agg_id,))
-            agg_record = cursor.fetchone()
-            if not agg_record:
-                st.error("No se encontró la agregación.")
-            else:
-                group_id = agg_record["grupo_id"]
+            # Selector de agregación para el grupo seleccionado: muestra "Algoritmo (Agregación: id)"
+            agg_groups = db.connection.execute("SELECT * FROM AggregatedRanking WHERE grupo_id = ?", (group_id,)).fetchall()
+            if agg_groups:
+                agg_options = {f"{agg['algoritmo']} (Agregación: {agg['id']})": agg['id'] for agg in agg_groups}
+                selected_agg = st.selectbox("Selecciona la agregación a ver", list(agg_options.keys()))
+                agg_id = agg_options[selected_agg]
+                
                 # Obtenemos la vista pivot del grupo (tabla completa con todos los rankings)
                 pivot_data = db.get_group_excel_format(group_id)
                 if pivot_data:
                     pivot_df = pd.DataFrame(pivot_data["rows"])
-                    # Asignamos nombres de columnas: "Elemento" y luego los nombres de los rankings
                     pivot_df.columns = ["Elemento"] + pivot_data["ranking_names"]
                     
-                    # Obtenemos el ranking agregado (orden) para ese grupo
-                    # La consulta de get_aggregated_ranking devuelve filas con "elemento" y "posicion"
-                    # Obtenemos el ranking agregado (orden) para ese grupo
+                    # Obtenemos el ranking agregado para el grupo
                     agg_data = db.get_aggregated_ranking(agg_id)
                     if not agg_data:
                         st.write("No hay valores para esta agregación.")
                     else:
-                        # Convertimos cada fila a diccionario
+                        # Convertimos cada fila a diccionario para garantizar las claves correctas
                         agg_df = pd.DataFrame([dict(row) for row in agg_data])
-                        # Verificamos que la columna del nombre del elemento se llame "Elemento"
+                        # Aseguramos que la columna del nombre del elemento se llame "Elemento"
                         if "elemento" in agg_df.columns and "Elemento" not in agg_df.columns:
                             agg_df.rename(columns={"elemento": "Elemento"}, inplace=True)
-                        # Renombramos la columna 'posicion' a 'Orden Agregado'
+                        # Renombramos la columna 'posicion' a 'Ranking Agregado'
                         agg_df.rename(columns={"posicion": "Ranking Agregado"}, inplace=True)
                         # Fusionamos usando la columna "Elemento"
                         merged_df = pivot_df.merge(agg_df, on="Elemento", how="left")
                         st.dataframe(merged_df)
                 else:
                     st.write("No hay datos para este grupo.")
+            else:
+                st.info("No hay agregaciones para este grupo.")
         else:
-            st.info("No hay agregaciones guardadas.")
+            st.info("No hay grupos de rankings guardados.")
+
 
     # Pestaña 6: Eliminar Agregaciones
     with tabs[5]:
         st.header("Eliminar Agregaciones")
-        # Recuperamos todas las agregaciones disponibles
-        agg_groups = db.connection.execute("SELECT * FROM AggregatedRanking").fetchall()
-        if agg_groups:
-            agg_options = {}
-            for agg in agg_groups:
-                grupo = db.get_group(agg['grupo_id'])
-                grupo_nombre = grupo["nombre"] if grupo is not None else "Desconocido"
-                label = f"{grupo_nombre} (Grupo: {agg['grupo_id']}) - {agg['algoritmo']} (Agregación: {agg['id']})"
-                agg_options[label] = agg['id']
-            selected_agg = st.selectbox("Selecciona la agregación a eliminar", list(agg_options.keys()))
-            agg_id = agg_options[selected_agg]
-            if st.button("Eliminar Agregación"):
-                try:
-                    db.delete_aggregated_ranking(agg_id)
-                    st.success("Agregación eliminada correctamente.")
-                except Exception as e:
-                    st.error(f"Error al eliminar la agregación: {e}")
+        # Primero, obtenemos los grupos de rankings
+        groups = db.connection.execute("SELECT * FROM RankingGroup").fetchall()
+        if groups:
+            group_options = {f"{group['nombre']} (Grupo: {group['id']})": group['id'] for group in groups}
+            selected_group = st.selectbox("Selecciona el grupo", list(group_options.keys()))
+            group_id = group_options[selected_group]
+            
+            # Ahora, obtenemos las agregaciones correspondientes al grupo seleccionado
+            agg_groups = db.connection.execute("SELECT * FROM AggregatedRanking WHERE grupo_id = ?", (group_id,)).fetchall()
+            if agg_groups:
+                agg_options = {f"{agg['algoritmo']} (Agregación: {agg['id']})": agg['id'] for agg in agg_groups}
+                selected_agg = st.selectbox("Selecciona la agregación a eliminar", list(agg_options.keys()))
+                agg_id = agg_options[selected_agg]
+                
+                if st.button("Eliminar Agregación"):
+                    try:
+                        db.delete_aggregated_ranking(agg_id)
+                        st.success("Agregación eliminada correctamente.")
+                    except Exception as e:
+                        st.error(f"Error al eliminar la agregación: {e}")
+            else:
+                st.info("No hay agregaciones para el grupo seleccionado.")
         else:
-            st.info("No hay agregaciones guardadas.")
+            st.info("No hay grupos de rankings guardados.")
+
 
 
     # Pestaña 7: Comparar Agregaciones

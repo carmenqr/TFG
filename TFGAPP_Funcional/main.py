@@ -258,7 +258,6 @@ def main():
         groups = db.connection.execute("SELECT * FROM RankingGroup").fetchall()
         if groups:
             # Selector de grupo
-            #group_options = {f"{group['id']} - {group['nombre']}": group['id'] for group in groups}
             group_options = {f"{group['nombre']} (Grupo: {group['id']})": group['id'] for group in groups}
             selected_group = st.selectbox("Selecciona el grupo a comparar", list(group_options.keys()))
             group_id = group_options[selected_group]
@@ -273,54 +272,45 @@ def main():
                 if not agg_groups:
                     st.error("No hay ranking agregado para este grupo. Ejecuta una agregación primero.")
                 else:
-                    #agg_options = {f"{agg['id']} - {agg['algoritmo']}": agg['id'] for agg in agg_groups}
                     agg_options = {f"{agg['algoritmo']} (Agregación: {agg['id']})": agg['id'] for agg in agg_groups}
                     selected_agg = st.selectbox("Selecciona la agregación a comparar", list(agg_options.keys()))
                     agg_id = agg_options[selected_agg]
                     
-                    # --- Mostrar la tabla completa (vista pivot con Ranking Agregado) ---
+                    # Obtenemos la vista pivot del grupo (tabla completa con todos los rankings)
                     pivot_data = db.get_group_excel_format(group_id)
                     if pivot_data:
                         pivot_df = pd.DataFrame(pivot_data["rows"])
-                        # Las columnas se asignan: "Elemento" y luego los nombres de los rankings
                         pivot_df.columns = ["Elemento"] + pivot_data["ranking_names"]
                         # Obtenemos el ranking agregado para el grupo
                         agg_data = db.get_aggregated_ranking(agg_id)
                         if agg_data:
-                            # Convertir cada fila a diccionario para asegurar las claves correctas
                             agg_df = pd.DataFrame([dict(row) for row in agg_data])
-                            # Aseguramos que la columna con el nombre del elemento se llame "Elemento"
                             if "elemento" in agg_df.columns and "Elemento" not in agg_df.columns:
                                 agg_df.rename(columns={"elemento": "Elemento"}, inplace=True)
-                            # Renombramos la columna 'posicion' a 'Ranking Agregado'
                             agg_df.rename(columns={"posicion": "Ranking Agregado"}, inplace=True)
-                            # Fusionamos la vista pivot con el ranking agregado usando la columna "Elemento"
                             merged_df = pivot_df.merge(agg_df, on="Elemento", how="left")
-                            st.subheader("Tabla Completa con Ranking Agregado")
-                            st.dataframe(merged_df)
+                            # Se omite la visualización de merged_df por separado
                         else:
                             st.error("No se encontraron datos en el ranking agregado.")
+                            return
                     else:
                         st.write("No hay datos para este grupo.")
+                        return
                     
                     # --- Calcular las comparaciones para cada ranking individual ---
-                    # Primero, obtenemos el ranking agregado como vector (se asume que el orden de filas es el deseado)
                     agg_data = db.get_aggregated_ranking(agg_id)
                     if agg_data:
                         agg_ranking = [int(item['posicion']) for item in agg_data]
                     else:
                         st.error("No se pudo obtener el ranking agregado para comparaciones.")
                         return
-                        
-                    # Inicializamos listas para guardar las métricas (en el mismo orden que los rankings individuales)
+                            
                     kendall_list = []
                     spearman_list = []
                     ws_list = []
                     
-                    # Para cada ranking individual (se asume que el orden es el mismo que en pivot_data["ranking_names"])
                     for ranking in rankings:
                         values = db.get_ranking_values(ranking['id'])
-                        # Ordenamos por row_index para conservar el orden del Excel
                         values_sorted = sorted(values, key=lambda x: x['row_index'])
                         try:
                             individual = [int(item['posicion']) for item in values_sorted]
@@ -330,8 +320,6 @@ def main():
                         if len(individual) != len(agg_ranking):
                             st.error(f"El ranking individual tiene {len(individual)} elementos, pero el ranking agregado tiene {len(agg_ranking)} elementos.")
                             continue
-                        # Para usar los métodos de comparación, instanciamos un objeto rank_aggregation
-                        # (se usa el ranking agregado; los métodos de comparación funcionan con dos vectores)
                         ra = rank_aggregation(np.array(agg_ranking).reshape(-1, 1))
                         kd = ra.kendall_tau_distance(np.array(individual), np.array(agg_ranking))
                         sp = ra.spearman_rank(np.array(individual), np.array(agg_ranking))
@@ -341,38 +329,34 @@ def main():
                         ws_list.append(ws_val)
                     
                     # --- Agregar las filas de las comparaciones a la tabla ---
-                    ranking_names = pivot_data["ranking_names"]  # Lista de nombres de rankings (en el mismo orden)
-                    # Creamos tres filas para las métricas
+                    ranking_names = pivot_data["ranking_names"]
                     distance_rows = []
-                    # Fila para la Distancia Kendall
                     row_kendall = {"Elemento": "Distancia Kendall"}
                     for i, name in enumerate(ranking_names):
                         row_kendall[name] = kendall_list[i] if i < len(kendall_list) else np.nan
                     row_kendall["Ranking Agregado"] = np.nan
                     distance_rows.append(row_kendall)
-                    # Fila para el Coeficiente Spearman
+                    
                     row_spearman = {"Elemento": "Coeficiente Spearman"}
                     for i, name in enumerate(ranking_names):
                         row_spearman[name] = spearman_list[i] if i < len(spearman_list) else np.nan
                     row_spearman["Ranking Agregado"] = np.nan
                     distance_rows.append(row_spearman)
-                    # Fila para el Coeficiente WS
+                    
                     row_ws = {"Elemento": "Coeficiente WS"}
                     for i, name in enumerate(ranking_names):
                         row_ws[name] = ws_list[i] if i < len(ws_list) else np.nan
                     row_ws["Ranking Agregado"] = np.nan
                     distance_rows.append(row_ws)
-
                     
-                    # Convertir las filas de distancias en DataFrame
                     distance_df = pd.DataFrame(distance_rows)
-                    # Concatenar la tabla original con las filas de distancia
                     final_df = pd.concat([merged_df, distance_df], ignore_index=True)
                     
                     st.subheader("Tabla Comparativa con Métricas de Distancia")
                     st.dataframe(final_df)
         else:
             st.info("No hay grupos de rankings disponibles.")
+
 
 
 

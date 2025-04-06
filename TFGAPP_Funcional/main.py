@@ -149,15 +149,20 @@ def main():
 
                     ra = rank_aggregation(ranks_array)
                     if algorithm == "Borda":
-                        aggregated_ranking = ra.borda_method(verbose=False)
+                        elementos_ordenados = ra.borda_method(verbose=False)
                     elif algorithm == "Copeland":
-                        aggregated_ranking = ra.copeland_method(verbose=False)
+                        elementos_ordenados = ra.copeland_method(verbose=False)
                     elif algorithm == "Kemey-Young":
-                        aggregated_ranking = ra.fast_kemeny_young(verbose=False)
+                        elementos_ordenados = ra.kemeny_young(verbose=False)
                     elif algorithm == "Schulze":
-                        aggregated_ranking = ra.schulze_method(verbose=False)
+                        elementos_ordenados = ra.schulze_method(verbose=False)
                     elif algorithm == "Footrule":
-                        aggregated_ranking = ra.footrule_rank_aggregation(verbose=False)
+                        elementos_ordenados = ra.footrule_rank_aggregation(verbose=False)
+
+                    # Convertimos de "elementos en orden" → "posición final por elemento"
+                    aggregated_ranking = np.empty_like(elementos_ordenados)
+                    aggregated_ranking[elementos_ordenados - 1] = np.arange(1, len(elementos_ordenados) + 1)
+
                     
                     st.subheader("Ranking Agregado")
                     st.write(aggregated_ranking)

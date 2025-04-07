@@ -153,16 +153,16 @@ def main():
                     elif algorithm == "Copeland":
                         elementos_ordenados = ra.copeland_method(verbose=False)
                     elif algorithm == "Kemey-Young":
-                        elementos_ordenados = ra.kemeny_young(verbose=False)
+                        aggregated_ranking = ra.kemeny_young(verbose=False)
                     elif algorithm == "Schulze":
                         elementos_ordenados = ra.schulze_method(verbose=False)
                     elif algorithm == "Footrule":
                         elementos_ordenados = ra.footrule_rank_aggregation(verbose=False)
 
-                    # Convertimos de "elementos en orden" → "posición final por elemento"
-                    aggregated_ranking = np.empty_like(elementos_ordenados)
-                    aggregated_ranking[elementos_ordenados - 1] = np.arange(1, len(elementos_ordenados) + 1)
-
+                    # Convertimos de "elementos en orden" → "posición final por elemento", menos en kemey que los devuelve así
+                    if(algorithm != "Kemey-Young"):
+                        aggregated_ranking = np.empty_like(elementos_ordenados)
+                        aggregated_ranking[elementos_ordenados - 1] = np.arange(1, len(elementos_ordenados) + 1)
                     
                     st.subheader("Ranking Agregado")
                     st.write(aggregated_ranking)

@@ -80,11 +80,12 @@ class RankingDB:
         self.connection.commit()
     
     # Métodos para el grupo de rankings
-    def add_group(self, nombre):
+    def add_group(self, nombre, aggregation_type=""):
         cursor = self.connection.cursor()
-        cursor.execute("INSERT INTO RankingGroup (nombre) VALUES (?)", (nombre,))
+        cursor.execute("INSERT INTO RankingGroup (nombre, aggregation_type) VALUES (?, ?)", (nombre, aggregation_type))
         self.connection.commit()
         return cursor.lastrowid
+
 
     def get_group(self, group_id):
         cursor = self.connection.cursor()

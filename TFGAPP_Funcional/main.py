@@ -15,6 +15,67 @@ def ws_coefficient(rank1, rank2):
         ws_sum += penalty * (diff / normalization if normalization != 0 else 0)
     return 1 - ws_sum
 
+def borda_with_ties(rankings_matrix):
+    """
+    rankings_matrix: lista de listas. Cada sublista es un ranking con empates permitidos.
+    Devuelve: lista de posiciones finales (menor = mejor).
+    """
+    rankings_matrix = np.array(rankings_matrix)
+    n_elements, n_rankings = rankings_matrix.shape
+    scores = np.zeros(n_elements)
+
+    for j in range(n_rankings):
+        col = rankings_matrix[:, j]
+        # Agrupar por posiciones
+        pos_to_indices = {}
+        for idx, val in enumerate(col):
+            pos_to_indices.setdefault(val, []).append(idx)
+
+        # Calcular puntuaciones tipo Borda con empates
+        for pos, indices in pos_to_indices.items():
+            # posiciones en Borda: n - (posición original)
+            base_scores = [n_elements - pos for _ in indices]
+            avg_score = np.mean(base_scores)
+            for idx in indices:
+                scores[idx] += avg_score
+
+    # Convertir las puntuaciones a ranking (más alta = mejor)
+    ordered_indices = np.argsort(-scores)
+    final_ranking = np.empty_like(ordered_indices)
+    for i, idx in enumerate(ordered_indices):
+        final_ranking[idx] = i + 1
+    return final_ranking
+
+def copeland_ponderado(rankings_matrix, pesos):
+    """
+    rankings_matrix: matriz NxM (N elementos, M rankings)
+    pesos: lista de M pesos correspondientes a cada ranking
+    """
+    import numpy as np
+    rankings_matrix = np.array(rankings_matrix)
+    n_elements = rankings_matrix.shape[0]
+    n_rankings = rankings_matrix.shape[1]
+    scores = np.zeros(n_elements)
+
+    for i in range(n_elements):
+        for j in range(n_elements):
+            if i != j:
+                win_score = 0
+                for k in range(n_rankings):
+                    if rankings_matrix[i][k] < rankings_matrix[j][k]:
+                        win_score += pesos[k]
+                    elif rankings_matrix[i][k] > rankings_matrix[j][k]:
+                        win_score -= pesos[k]
+                scores[i] += (win_score > 0) - (win_score < 0)  # +1 si gana, -1 si pierde
+
+    # Ordenar los índices según mayor score
+    ordered_indices = np.argsort(-scores)
+    final_ranking = np.empty_like(ordered_indices)
+    for i, idx in enumerate(ordered_indices):
+        final_ranking[idx] = i + 1
+    return final_ranking
+
+
 
 def main():
     st.set_page_config(layout="wide")
@@ -41,7 +102,11 @@ def main():
                     # - Columna 0, filas 1 en adelante: nombres de elementos
                     # - Resto de celdas: posiciones
                     group_name = df.iloc[0, 0]
-                    group_id = db.add_group(group_name)
+                    aggregation_type = ""
+                    if df.shape[1] > 1:
+                        aggregation_type = str(df.iloc[0, 1]).strip().lower()
+                    group_id = db.add_group(group_name, aggregation_type)
+
                     
                     # Guardar rankings (columnas)
                     ranking_ids = {}
@@ -126,8 +191,24 @@ def main():
             #group_options = {f"{group['id']} - {group['nombre']}": group['id'] for group in groups}
             group_options = {f"{group['nombre']} (Grupo: {group['id']})": group['id'] for group in groups}
             selected_group = st.selectbox("Selecciona el grupo de rankings a agregar", list(group_options.keys()))
-            algorithm = st.selectbox("Selecciona el algoritmo de agregación", 
-                                     ["Borda", "Copeland", "Kemey-Young", "Schulze", "Footrule"])
+            
+            group_id = group_options[selected_group]
+            agg_row = db.connection.execute("SELECT aggregation_type FROM RankingGroup WHERE id = ?", (group_id,)).fetchone()
+            agg_type = agg_row["aggregation_type"].strip().lower() if agg_row and agg_row["aggregation_type"] else ""
+
+
+            # Mostrar opciones según tipo detectado
+            if agg_type == "empates":
+                algorithm_options = ["Borda con Empates"]
+                st.info("Solo se permite el algoritmo **Borda** porque se detectaron empates en el archivo Excel.")
+            elif agg_type == "ponderaciones":
+                algorithm_options = ["Borda Ponderado", "Copeland Ponderado"]
+                st.info("Solo se permiten los algoritmos **Borda** y **Copeland** porque se detectaron ponderaciones.")
+            else:
+                algorithm_options = ["Borda", "Copeland", "Kemey-Young", "Schulze", "Footrule"]
+
+            algorithm = st.selectbox("Selecciona el algoritmo de agregación", algorithm_options)
+
             if st.button("Ejecutar Agregación"):
                 group_id = group_options[selected_group]
                 rankings = db.get_rankings(group_id)
@@ -135,16 +216,40 @@ def main():
                     st.error("No hay rankings en este grupo.")
                 else:
                     ranking_lists = []
-                    for ranking in rankings:
+                    ponderaciones = []
+
+                    # Si es tipo ponderaciones, extraer los pesos desde la fila 2
+                    if agg_type == "ponderaciones":
+                        pivot_data = db.get_group_excel_format(group_id)
+                        df_ponderacion = pd.DataFrame(pivot_data["rows"])
+                        try:
+                            ponderaciones = [float(val) for val in df_ponderacion.iloc[0, 1:].tolist()]
+                        except Exception as e:
+                            st.error("Error al leer las ponderaciones. Asegúrate de que estén en la fila 2 del Excel.")
+                            return
+
+                    for idx, ranking in enumerate(rankings):
                         values = db.get_ranking_values(ranking['id'])
-                        # Ordenamos por row_index para conservar el orden del Excel
-                        values_sorted = sorted(values, key=lambda x: x['row_index'])
+
+                        if agg_type == "ponderaciones":
+                            values_sorted = sorted([v for v in values if v['row_index'] > 2], key=lambda x: x['row_index'])
+                        else:
+                            values_sorted = sorted(values, key=lambda x: x['row_index'])
+
                         try:
                             ranking_list = [int(item['posicion']) for item in values_sorted]
+                            # Aplicar ponderación si corresponde
+                            if agg_type == "ponderaciones":
+                                weight = ponderaciones[idx]
+                                ranking_list = [val * weight for val in ranking_list]
                         except Exception as e:
-                            st.error("Error al convertir los valores del ranking a números.")
+                            st.error("Error al convertir o ponderar los valores del ranking.")
                             return
+
                         ranking_lists.append(ranking_list)
+
+                        
+
                     
                     try:
                         ranks_array = np.array(ranking_lists).T
@@ -153,10 +258,14 @@ def main():
                         return
 
                     ra = rank_aggregation(ranks_array)
-                    if algorithm == "Borda":
+                    if algorithm == "Borda" or algorithm == "Borda Ponderado":
                         elementos_ordenados = ra.borda_method(verbose=False)
+                    elif algorithm == "Borda con Empates":
+                        aggregated_ranking = borda_with_ties(ranks_array)
                     elif algorithm == "Copeland":
                         elementos_ordenados = ra.copeland_method(verbose=False)
+                    elif algorithm == "Copeland Ponderado":
+                        aggregated_ranking = copeland_ponderado(ranks_array, ponderaciones)
                     elif algorithm == "Kemey-Young":
                         aggregated_ranking = ra.kemeny_young(verbose=False)
                     elif algorithm == "Schulze":
@@ -165,7 +274,7 @@ def main():
                         elementos_ordenados = ra.footrule_rank_aggregation(verbose=False)
 
                     # Convertimos de "elementos en orden" → "posición final por elemento", menos en kemey que los devuelve así
-                    if(algorithm != "Kemey-Young"):
+                    if(algorithm != "Kemey-Young" and algorithm != "Borda con Empates" and algorithm != "Copeland Ponderado"):
                         aggregated_ranking = np.empty_like(elementos_ordenados)
                         aggregated_ranking[elementos_ordenados - 1] = np.arange(1, len(elementos_ordenados) + 1)
                     
@@ -175,13 +284,23 @@ def main():
                     # Guardar el ranking agregado en la BD
                     agg_id = db.add_aggregated_ranking(group_id, algorithm)
                     elements = db.get_ranking_elements(group_id)
-                    elements_sorted = sorted(elements, key=lambda x: x['row_index'])
+
+                    # Si es ponderaciones, excluir la fila de ponderaciones
+                    if agg_type == "ponderaciones":
+                        elements_sorted = sorted([e for e in elements if e['row_index'] > 2], key=lambda x: x['row_index'])
+                    else:
+                        elements_sorted = sorted(elements, key=lambda x: x['row_index'])
+
                     for idx, elem in enumerate(elements_sorted):
                         try:
                             pos = int(aggregated_ranking[idx])
-                        except Exception as e:
+                        except Exception:
                             pos = aggregated_ranking[idx]
                         db.add_aggregated_ranking_value(agg_id, elem['id'], pos)
+
+
+
+
                     st.success("Ranking agregado guardado correctamente.")
         else:
             st.info("No hay grupos disponibles para agregar rankings.")
@@ -310,6 +429,9 @@ def main():
                     
                     # --- Calcular las comparaciones para cada ranking individual ---
                     agg_data = db.get_aggregated_ranking(agg_id)
+                    agg_row = db.connection.execute("SELECT aggregation_type FROM RankingGroup WHERE id = ?", (group_id,)).fetchone()
+                    agg_type = agg_row["aggregation_type"].strip().lower() if agg_row and agg_row["aggregation_type"] else ""
+
                     if agg_data:
                         agg_ranking = [int(item['posicion']) for item in agg_data]
                     else:
@@ -323,7 +445,11 @@ def main():
                     
                     for ranking in rankings:
                         values = db.get_ranking_values(ranking['id'])
-                        values_sorted = sorted(values, key=lambda x: x['row_index'])
+                        if agg_type == "ponderaciones":
+                            values_sorted = sorted([v for v in values if v['row_index'] > 2], key=lambda x: x['row_index'])
+                        else:
+                            values_sorted = sorted(values, key=lambda x: x['row_index'])
+
                         try:
                             individual = [int(item['posicion']) for item in values_sorted]
                         except Exception as e:

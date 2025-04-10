@@ -15,33 +15,6 @@ def ws_coefficient(rank1, rank2):
         ws_sum += penalty * (diff / normalization if normalization != 0 else 0)
     return 1 - ws_sum
 
-def show_centered_table(df, height=400):
-    html_table = df.to_html(index=False, justify='center', border=0, float_format=None)
-    styled_html = f"""
-        <div style="overflow-x: auto; max-height: {height}px; border: 1px solid #ccc;">
-            <style>
-                table {{
-                    width: 100%;
-                    border-collapse: collapse;
-                    text-align: center;
-                    font-family: sans-serif;
-                }}
-                th, td {{
-                    text-align: center !important;
-                    padding: 8px;
-                    border: 1px solid #ddd;
-                }}
-                thead {{
-                    background-color: #f2f2f2;
-                    position: sticky;
-                    top: 0;
-                }}
-            </style>
-            {html_table}
-        </div>
-    """
-    st.markdown(styled_html, unsafe_allow_html=True)
-
 
 def main():
     st.set_page_config(layout="wide")
@@ -60,7 +33,7 @@ def main():
                 # Leemos el Excel sin cabecera, ya que el formato es personalizado
                 df = pd.read_excel(uploaded_file, header=None)
                 st.write("Vista previa del Excel:")
-                show_centered_table(df)
+                st.dataframe(df, use_container_width=False)
                 if st.button("Guardar en la base de datos"):
                     # Se asume: 
                     # - Celda (0,0): nombre del grupo
@@ -138,7 +111,7 @@ def main():
                 # Asigna el nombre de las columnas: la primera columna "Elemento"
                 # y luego los nombres de los rankings (por ejemplo, R1, R2, R3, R4)
                 df_pivot.columns = ["Elemento"] + pivot_data["ranking_names"]
-                show_centered_table(df_pivot)
+                st.dataframe(df_pivot, use_container_width=False)
             else:
                 st.write("No hay datos para este grupo.")
         else:
@@ -250,7 +223,7 @@ def main():
                         agg_df.rename(columns={"posicion": "Ranking Agregado"}, inplace=True)
                         # Fusionamos usando la columna "Elemento"
                         merged_df = pivot_df.merge(agg_df, on="Elemento", how="left")
-                        show_centered_table(merged_df)
+                        st.dataframe(merged_df, use_container_width=False)
 
                 else:
                     st.write("No hay datos para este grupo.")
@@ -400,8 +373,8 @@ def main():
                     final_df = pd.concat([merged_df, distance_df], ignore_index=True)
                     
                     st.subheader("Tabla Comparativa con Métricas de Distancia")
-                    st.dataframe(final_df)
-                    show_centered_table(final_df)
+                    st.dataframe(final_df, use_container_width=False)
+
         else:
             st.info("No hay grupos de rankings disponibles.")
 

@@ -27,7 +27,7 @@ def main():
                 df = pd.read_excel(uploaded_file, header=None)
                 st.write("Vista previa del Excel:")
                 st.dataframe(df, use_container_width=False)
-                if st.button("Guardar en la base de datos"):
+                if st.button("Guardar"):
                     # Se asume: 
                     # - Celda (0,0): nombre del grupo
                     # - Fila 0, columnas 1 en adelante: nombres de rankings (ej. R1, R2, …)

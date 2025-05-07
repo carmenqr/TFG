@@ -5,7 +5,9 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.manifold import MDS
 import plotly.express as px
+import plotly.graph_objects as go
 
+#MÉTRICA COEFICIENTE WS
 def ws_coefficient(rank1, rank2):
     n = len(rank1)
     ws_sum = 0
@@ -16,6 +18,7 @@ def ws_coefficient(rank1, rank2):
         ws_sum += penalty * (diff / normalization if normalization != 0 else 0)
     return 1 - ws_sum
 
+#VARIANTES DE ALGORITMOS DE AGREGACIÓN
 def borda_with_ties(rankings_matrix):
     rankings_matrix = np.array(rankings_matrix)
     n_elements, n_rankings = rankings_matrix.shape
@@ -62,12 +65,47 @@ def copeland_ponderado(rankings_matrix, pesos):
     return final_ranking
 
 def custom_heatmap(df):
-    plt.figure(figsize=(12, 6))
-    sns.heatmap(df, annot=True, cmap='coolwarm', fmt='d', linewidths=0.5, cbar=True)
-    plt.title("Heatmap de Rankings Agregados")
-    plt.xlabel("Método")
-    plt.ylabel("Elemento")
-    st.pyplot(plt.gcf())
+    st.markdown("#### Heatmap con las posiciones de los rankings agregados")
+    try:
+        z = df.values
+        x = list(df.columns)
+        y = list(df.index)
+
+        fig = go.Figure(data=go.Heatmap(
+            z=z,
+            x=x,
+            y=y,
+            colorscale='RdBu',
+            reversescale=True,
+            showscale=True,
+            colorbar=dict(title="Ranking")
+        ))
+
+        annotations = []
+        for i in range(len(y)):
+            for j in range(len(x)):
+                annotations.append(dict(
+                    x=x[j],
+                    y=y[i],
+                    text=str(z[i][j]),
+                    showarrow=False,
+                    font=dict(color="black", size=16)
+                ))
+
+        fig.update_layout(
+            xaxis_title="Método",
+            yaxis_title="Elemento",
+            annotations=annotations,
+            height=500,
+            xaxis=dict(tickfont=dict(size=16), title_font=dict(size=18)),
+            yaxis=dict(tickfont=dict(size=16), title_font=dict(size=18)),
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+        return fig
+    except Exception as e:
+        st.warning(f"No se pudo generar el heatmap interactivo: {e}")
+        return None
 
 def custom_radar_chart(df):
     st.markdown("#### Radar Charts por Método de Agregación")
@@ -101,13 +139,13 @@ def custom_radar_chart(df):
 
     plt.tight_layout()
     st.pyplot(fig)
-
-
+    
 def custom_mds_plot(df):
-    st.markdown("#### MDS - Comparación de Distancias entre Métodos")
+    st.markdown("#### MDS - Comparación de Distancias entre Métodos de agregación")
     methods = df.columns
     distances = np.zeros((len(methods), len(methods)))
 
+    resumen = []
     for i in range(len(methods)):
         for j in range(len(methods)):
             if i != j:
@@ -123,10 +161,17 @@ def custom_mds_plot(df):
                 except:
                     ws = 0.0
                 total = (1 - spearman) + kendall + (1 - ws)
-                if np.isfinite(total):
-                    distances[i, j] = total
-                else:
-                    distances[i, j] = 0.0
+                distances[i, j] = total if np.isfinite(total) else 0.0
+
+                if j > i:
+                    resumen.append({
+                        "Método 1": methods[i],
+                        "Método 2": methods[j],
+                        "Distancia Kendall": round(kendall, 3),
+                        "Coeficiente Spearman": round(1 - spearman, 3),
+                        "Coeficiente WS": round(1 - ws, 3),
+                        "Total": round(total, 3)
+                    })
 
     if np.any(np.isnan(distances)) or np.any(np.isinf(distances)):
         st.warning("La matriz de distancias contiene valores no válidos. No se puede generar el MDS.")
@@ -135,38 +180,44 @@ def custom_mds_plot(df):
     mds = MDS(n_components=2, dissimilarity='precomputed', random_state=42)
     coords = mds.fit_transform(distances)
 
-    fig, ax = plt.subplots(figsize=(8, 4))
-    ax.scatter(coords[:, 0], coords[:, 1], s=100)
-    for i, method in enumerate(methods):
-        ax.text(coords[i, 0], coords[i, 1], method, fontsize=10, ha='center')
-    ax.set_title("MDS - Resumen de Distancias entre Rankings Agregados")
-    ax.grid(True)
-    st.pyplot(fig, use_container_width=False, clear_figure=True)
-    
-    resumen = []
-    for i in range(len(methods)):
-        for j in range(i + 1, len(methods)):
-            r1 = df.iloc[:, i].values
-            r2 = df.iloc[:, j].values
-            kendall = np.sum([1 for a, b in zip(r1, r2) if a != b])
-            try:
-                spearman = np.corrcoef(r1, r2)[0, 1]
-            except:
-                spearman = 0.0
-            try:
-                ws = ws_coefficient(r1, r2)
-            except:
-                ws = 0.0
-            total = (1 - spearman) + kendall + (1 - ws)
-            resumen.append({
-                "Método 1": methods[i],
-                "Método 2": methods[j],
-                "Kendall": round(kendall, 3),
-                "1 - Spearman": round(1 - spearman, 3),
-                "1 - WS": round(1 - ws, 3),
-                "Total": round(total, 3)
-            })
-    st.markdown("#### Tabla de Distancias entre Rankings Agregados")
+    df_coords = pd.DataFrame(coords, columns=["Dim 1", "Dim 2"])
+    df_coords["Método"] = methods
+
+    fig = px.scatter(
+        df_coords,
+        x="Dim 1",
+        y="Dim 2",
+        text="Método",
+        width=800,
+        height=500
+    )
+
+    fig.update_traces(
+        marker=dict(size=14),
+        textposition='top center',
+        textfont=dict(size=14)
+    )
+
+    fig.update_layout(
+        showlegend=False,
+        plot_bgcolor="white",
+        xaxis=dict(
+            title="x",
+            showgrid=True,
+            zeroline=True,
+            tickfont=dict(size=14)
+        ),
+        yaxis=dict(
+            title="y",
+            showgrid=True,
+            zeroline=True,
+            tickfont=dict(size=14)
+        )
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("#### Tabla de distancias entre rankings agregados con los diferentes métodos de agregación")
     st.dataframe(pd.DataFrame(resumen))
 
 # GRÁFICAS PARA COMPARACIÓN POR ALGORITMO DE AGREGACIÓN
@@ -197,8 +248,6 @@ def plot_ranking_positions(merged_df):
     except Exception as e:
         st.warning(f"No se pudo generar el gráfico interactivo: {e}")
         return None
-
-import plotly.express as px
 
 def plot_all_metrics(ranking_names, kendall, kendall_corr, spearman, ws):
     try:
@@ -231,9 +280,7 @@ def plot_all_metrics(ranking_names, kendall, kendall_corr, spearman, ws):
     except Exception as e:
         st.warning(f"Error al generar gráfico de líneas interactivo: {e}")
         return None
-
-
-        
+      
 def plot_all_distances_grouped(ranking_names, kendall, kendall_corr, spearman, ws):
     try:
         df = pd.DataFrame({
@@ -266,10 +313,7 @@ def plot_all_distances_grouped(ranking_names, kendall, kendall_corr, spearman, w
         st.warning(f"Error al generar gráfico interactivo de resumen: {e}")
         return None
 
-
-
-# ORGANIZADOR DE GRÁFICAS
-
+# ORGANIZADOR DE GRÁFICAS POR ALGORITMO DE AGREGACIÓN
 def show_comparison_graphs(merged_df, ranking_names, kendall_list, kendall_corr_list, spearman_list, ws_list):
     st.markdown("### Comparación de Posiciones")
     plot_ranking_positions(merged_df)

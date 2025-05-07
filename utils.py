@@ -315,10 +315,10 @@ def plot_all_distances_grouped(ranking_names, kendall, kendall_corr, spearman, w
 
 # ORGANIZADOR DE GRÁFICAS POR ALGORITMO DE AGREGACIÓN
 def show_comparison_graphs(merged_df, ranking_names, kendall_list, kendall_corr_list, spearman_list, ws_list):
-    st.markdown("### Comparación de Posiciones")
+    st.markdown("### Comparación de posiciones")
     plot_ranking_positions(merged_df)
     
-    st.markdown("### Comparación métricas")   
+    st.markdown("### Comparación de métricas")   
     plot_all_metrics(ranking_names, kendall_list, kendall_corr_list, spearman_list, ws_list)
 
     plot_all_distances_grouped(ranking_names, kendall_list, kendall_corr_list, spearman_list, ws_list)

@@ -317,7 +317,7 @@ def main():
     # Pestaña 7: Comparar Agregaciones
     with tabs[6]:
         st.header("Comparar Algoritmos")
-        modo_comparacion = st.radio("Modo de comparación:", ["Por algoritmo de agregación", "Por Grupo"])
+        modo_comparacion = st.radio("Modo de comparación:", ["Por algoritmo de agregación", "Por grupo"])
         groups = db.connection.execute("SELECT * FROM RankingGroup").fetchall()
         if not groups:
             st.info("No hay grupos disponibles.")
@@ -433,7 +433,7 @@ def main():
                         distance_df = pd.DataFrame(distance_rows)
                         final_df = pd.concat([merged_df, distance_df], ignore_index=True)
                         
-                        st.subheader("Tabla Comparativa con Métricas de Distancia")
+                        st.subheader("Tabla comparativa con métricas de distancia")
                         st.write("Distancias entre el ranking agregado (con el algoritmo seleccionado) y los rankings individuales")
                         st.dataframe(final_df, use_container_width=False)
                         show_comparison_graphs(merged_df, ranking_names, kendall_list, kendall_corr_list, spearman_list, ws_list)

@@ -4,6 +4,7 @@ import streamlit as st
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.manifold import MDS
+import plotly.express as px
 
 def ws_coefficient(rank1, rank2):
     n = len(rank1)
@@ -174,87 +175,106 @@ def plot_ranking_positions(merged_df):
     try:
         df_plot = merged_df.copy().dropna()
         df_melted = df_plot.melt(id_vars=["Elemento"], var_name="Ranking", value_name="Posición")
+        df_melted["Elemento"] = df_melted["Elemento"].astype(str)
 
-        df_melted["Elemento"] = df_melted["Elemento"].astype(str)  # Asegura etiquetas compatibles
+        fig = px.bar(
+            df_melted,
+            x="Elemento",
+            y="Posición",
+            color="Ranking",
+            barmode="group",
+            labels={"Posición": "Posición", "Elemento": "Elemento"}
+        )
 
-        fig, ax = plt.subplots(figsize=(10, 4))
-        sns.barplot(data=df_melted, x="Elemento", y="Posición", hue="Ranking", ax=ax, dodge=True, palette="pastel")
+        fig.update_layout(
+            legend_title="Ranking",
+            xaxis_tickangle=-45,
+            height=400
+        )
 
-
-
-        ax.set_title("Comparación de Posiciones (Barras)")
-        ax.set_ylabel("Posición")
-        ax.set_xlabel("Elemento")
-        plt.xticks(rotation=45, ha='right')
-        ax.legend(title="Ranking", loc='center left', bbox_to_anchor=(1.02, 0.5), fontsize='small', title_fontsize='small', frameon=True)
-
-        st.pyplot(fig, clear_figure=True)
+        st.plotly_chart(fig, use_container_width=True)
+        return fig
     except Exception as e:
-        st.warning(f"No se pudo generar el gráfico de posiciones en barras: {e}")
+        st.warning(f"No se pudo generar el gráfico interactivo: {e}")
+        return None
 
+import plotly.express as px
 
-def plot_single_metric(ranking_names, values, title, color="tab:blue", kind="bar"):
+def plot_all_metrics(ranking_names, kendall, kendall_corr, spearman, ws):
     try:
-        fig, ax = plt.subplots(figsize=(4.5, 3))
-        if kind == "bar":
-            ax.bar(ranking_names, values, color=color)
-        elif kind == "line":
-            ax.plot(ranking_names, values, marker="o", color=color)
-        elif kind == "point":
-            sns.stripplot(x=values, y=ranking_names, ax=ax, color=color, size=8, orient="h")
-        ax.set_title(title)
-        st.pyplot(fig, clear_figure=True)
-    except Exception as e:
-        st.warning(f"Error en gráfica {title}: {e}")
+        df = pd.DataFrame({
+            "Ranking": ranking_names * 4,
+            "Métrica": ["Dist Kendall"] * len(ranking_names) +
+                       ["Coef Kendall"] * len(ranking_names) +
+                       ["Coef Spearman"] * len(ranking_names) +
+                       ["Coef WS"] * len(ranking_names),
+            "Valor": kendall + kendall_corr + [1 - s for s in spearman] + [1 - w for w in ws]
+        })
 
+        fig = px.line(
+            df,
+            x="Ranking",
+            y="Valor",
+            color="Métrica",
+            markers=True,
+            labels={"Valor": "Valor", "Ranking": "Ranking"}
+        )
+
+        fig.update_layout(
+            legend_title="Métrica",
+            xaxis_tickangle=-45,
+            height=400
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+        return fig
+    except Exception as e:
+        st.warning(f"Error al generar gráfico de líneas interactivo: {e}")
+        return None
+
+
+        
 def plot_all_distances_grouped(ranking_names, kendall, kendall_corr, spearman, ws):
     try:
         df = pd.DataFrame({
-            "Ranking": ranking_names * 3,
-            "Métrica": ["Coef Kendall"] * len(ranking_names) +
+            "Ranking": ranking_names * 4,
+            "Métrica": ["Dist Kendall"] * len(ranking_names) +
+                       ["Coef Kendall"] * len(ranking_names) +
                        ["Coef Spearman"] * len(ranking_names) +
                        ["Coef WS"] * len(ranking_names),
-            "Valor": kendall_corr + [1 - val for val in spearman] + [1 - val for val in ws]
+            "Valor": kendall + kendall_corr + [1 - val for val in spearman] + [1 - val for val in ws]
         })
 
-        # Pivot para gráfico de barras agrupadas
-        df_pivot = df.pivot(index="Ranking", columns="Métrica", values="Valor").reset_index()
+        fig = px.bar(
+            df,
+            x="Ranking",
+            y="Valor",
+            color="Métrica",
+            barmode="group",
+            labels={"Valor": "Valor", "Ranking": "Ranking"}
+        )
 
-        fig, ax = plt.subplots(figsize=(10, 4))
-        df_pivot.set_index("Ranking").plot(kind="bar", ax=ax, colormap="Set2")  # <- Aquí aplicamos la paleta pastel
-        ax.set_title("Resumen de Métricas por Ranking")
-        ax.set_ylabel("Valor")
-        ax.set_xlabel("Ranking")
-        ax.legend(title="Métrica", loc='center left', bbox_to_anchor=(1.02, 0.5), fontsize='small', title_fontsize='small', frameon=True)
-        plt.xticks(rotation=45, ha='right')
-        st.pyplot(fig, clear_figure=True)
+        fig.update_layout(
+            legend_title="Métrica",
+            xaxis_tickangle=-45,
+            height=400
+        )
 
+        st.plotly_chart(fig, use_container_width=True)
+        return fig
     except Exception as e:
-        st.warning(f"Error al generar gráfico de resumen: {e}")
+        st.warning(f"Error al generar gráfico interactivo de resumen: {e}")
+        return None
 
 
 
 # ORGANIZADOR DE GRÁFICAS
 
 def show_comparison_graphs(merged_df, ranking_names, kendall_list, kendall_corr_list, spearman_list, ws_list):
-    # Fila 1 - Solo la gráfica de posiciones
-    st.markdown("### Comparación de Posiciones (Barras)")
+    st.markdown("### Comparación de Posiciones")
     plot_ranking_positions(merged_df)
+    
+    st.markdown("### Comparación métricas")   
+    plot_all_metrics(ranking_names, kendall_list, kendall_corr_list, spearman_list, ws_list)
 
-    # Fila 2 - Kendall y Kendall corregido
-    col1, col2 = st.columns(2)
-    with col1:
-        plot_single_metric(ranking_names, kendall_list, "Distancia Kendall", color="tab:red", kind="line")
-    with col2:
-        plot_single_metric(ranking_names, kendall_corr_list, "Coeficiente Kendall", color="tab:orange", kind="line")
-
-    # Fila 3 - Spearman y WS
-    col3, col4 = st.columns(2)
-    with col3:
-        plot_single_metric(ranking_names, [1 - s for s in spearman_list], "1 - Spearman", color="tab:green", kind="line")
-    with col4:
-        plot_single_metric(ranking_names, [1 - w for w in ws_list], "1 - WS", color="tab:purple", kind="line")
-
-    # Fila 4 - Gráfico resumen final
-    st.markdown("### Resumen de Distancias por Ranking y Métrica")
     plot_all_distances_grouped(ranking_names, kendall_list, kendall_corr_list, spearman_list, ws_list)

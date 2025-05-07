@@ -186,7 +186,7 @@ def plot_ranking_positions(merged_df):
         ax.set_ylabel("Posición")
         ax.set_xlabel("Elemento")
         plt.xticks(rotation=45, ha='right')
-        ax.legend(title="Ranking", loc='upper left', fontsize='small', title_fontsize='small', frameon=True)
+        ax.legend(title="Ranking", loc='center left', bbox_to_anchor=(1.02, 0.5), fontsize='small', title_fontsize='small', frameon=True)
 
         st.pyplot(fig, clear_figure=True)
     except Exception as e:
@@ -210,23 +210,22 @@ def plot_single_metric(ranking_names, values, title, color="tab:blue", kind="bar
 def plot_all_distances_grouped(ranking_names, kendall, kendall_corr, spearman, ws):
     try:
         df = pd.DataFrame({
-            "Ranking": ranking_names * 4,
-            "Métrica": ["Kendall"] * len(ranking_names) +
-                       ["Coef Kendall"] * len(ranking_names) +
-                       ["1 - Spearman"] * len(ranking_names) +
-                       ["1 - WS"] * len(ranking_names),
-            "Valor": kendall + kendall_corr + [1 - val for val in spearman] + [1 - val for val in ws]
+            "Ranking": ranking_names * 3,
+            "Métrica": ["Coef Kendall"] * len(ranking_names) +
+                       ["Coef Spearman"] * len(ranking_names) +
+                       ["Coef WS"] * len(ranking_names),
+            "Valor": kendall_corr + [1 - val for val in spearman] + [1 - val for val in ws]
         })
 
         # Pivot para gráfico de barras agrupadas
         df_pivot = df.pivot(index="Ranking", columns="Métrica", values="Valor").reset_index()
 
         fig, ax = plt.subplots(figsize=(10, 4))
-        df_pivot.set_index("Ranking").plot(kind="bar", ax=ax, colormap="coolwarm")  # <- Aquí aplicamos la paleta pastel
+        df_pivot.set_index("Ranking").plot(kind="bar", ax=ax, colormap="Set2")  # <- Aquí aplicamos la paleta pastel
         ax.set_title("Resumen de Métricas por Ranking")
         ax.set_ylabel("Valor")
         ax.set_xlabel("Ranking")
-        ax.legend(title="Métrica", fontsize="small", title_fontsize="small")
+        ax.legend(title="Métrica", loc='center left', bbox_to_anchor=(1.02, 0.5), fontsize='small', title_fontsize='small', frameon=True)
         plt.xticks(rotation=45, ha='right')
         st.pyplot(fig, clear_figure=True)
 

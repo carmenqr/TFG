@@ -6,9 +6,10 @@ import seaborn as sns
 from sklearn.manifold import MDS
 import plotly.express as px
 import plotly.graph_objects as go
+from pyRankMCDA.algorithm import rank_aggregation 
 
 #MÉTRICA COEFICIENTE WS
-def ws_coefficient(rank1, rank2):
+""" def ws_coefficient(rank1, rank2):
     n = len(rank1)
     ws_sum = 0
     for rxi, ryi in zip(rank1, rank2):
@@ -16,7 +17,28 @@ def ws_coefficient(rank1, rank2):
         normalization = max(abs(1 - rxi), abs(n - rxi))
         diff = abs(rxi - ryi)
         ws_sum += penalty * (diff / normalization if normalization != 0 else 0)
-    return 1 - ws_sum
+    return 1 - ws_sum """
+
+def ws_coefficient(rank1, rank2):
+    try:
+        n = len(rank1)
+        ws_sum = 0
+        for idx, (rxi, ryi) in enumerate(zip(rank1, rank2)):
+            try:
+                penalty = 2 ** (-float(rxi))  # Convertir a float para evitar error con enteros negativos
+                normalization = max(abs(1 - rxi), abs(n - rxi))
+                diff = abs(rxi - ryi)
+                ws_sum += penalty * (diff / normalization if normalization != 0 else 0)
+            except Exception as inner_e:
+                print(f"[WS ERROR] Elemento #{idx} → rxi={rxi}, ryi={ryi} → Error: {inner_e}")
+                raise inner_e
+
+        return 1 - ws_sum
+
+    except Exception as outer_e:
+        print(f"[WS COEFFICIENT ERROR] rank1={rank1}, rank2={rank2} → Error: {outer_e}")
+        raise outer_e
+
 
 #VARIANTES DE ALGORITMOS DE AGREGACIÓN
 def borda_with_ties(rankings_matrix):
@@ -151,27 +173,39 @@ def custom_mds_plot(df):
             if i != j:
                 r1 = df.iloc[:, i].values
                 r2 = df.iloc[:, j].values
-                kendall = np.sum([1 for a, b in zip(r1, r2) if a != b])
+                ra = rank_aggregation(np.array(r1).reshape(-1, 1))
                 try:
-                    spearman = np.corrcoef(r1, r2)[0, 1]
+                    kendall = ra.kendall_tau_distance(np.array(r2), np.array(r1))
+                except:
+                    kendall = 0.0
+                try:
+                    kendall_corr = ra.kendall_tau_corr(np.array(r2), np.array(r1))
+                except:
+                    kendall_corr = 0.0
+                try:
+                    spearman = ra.spearman_rank(np.array(r2), np.array(r1))
                 except:
                     spearman = 0.0
                 try:
-                    ws = ws_coefficient(r1, r2)
+                    ws = ws_coefficient(r2, r1)
                 except:
                     ws = 0.0
-                total = (1 - spearman) + kendall + (1 - ws)
-                distances[i, j] = total if np.isfinite(total) else 0.0
+                    
+                total = spearman + kendall + ws + kendall_corr
+                value = total if np.isfinite(total) else 0.0
+                distances[i, j] = value
+                distances[j, i] = value
+
 
                 if j > i:
                     resumen.append({
                         "Método 1": methods[i],
                         "Método 2": methods[j],
                         "Distancia Kendall": round(kendall, 3),
-                        "Coeficiente Spearman": round(1 - spearman, 3),
-                        "Coeficiente WS": round(1 - ws, 3),
-                        "Total": round(total, 3)
-                    })
+                        "Coeficiente Kendall": round(kendall_corr, 3),
+                        "Coeficiente Spearman": round(spearman, 3),
+                        "Coeficiente WS": round(ws, 3)
+                        })
 
     if np.any(np.isnan(distances)) or np.any(np.isinf(distances)):
         st.warning("La matriz de distancias contiene valores no válidos. No se puede generar el MDS.")
@@ -257,7 +291,7 @@ def plot_all_metrics(ranking_names, kendall, kendall_corr, spearman, ws):
                        ["Coef Kendall"] * len(ranking_names) +
                        ["Coef Spearman"] * len(ranking_names) +
                        ["Coef WS"] * len(ranking_names),
-            "Valor": kendall + kendall_corr + [1 - s for s in spearman] + [1 - w for w in ws]
+            "Valor": kendall + kendall_corr + spearman + ws
         })
 
         fig = px.line(
@@ -289,7 +323,7 @@ def plot_all_distances_grouped(ranking_names, kendall, kendall_corr, spearman, w
                        ["Coef Kendall"] * len(ranking_names) +
                        ["Coef Spearman"] * len(ranking_names) +
                        ["Coef WS"] * len(ranking_names),
-            "Valor": kendall + kendall_corr + [1 - val for val in spearman] + [1 - val for val in ws]
+            "Valor": kendall + kendall_corr + spearman +  ws
         })
 
         fig = px.bar(

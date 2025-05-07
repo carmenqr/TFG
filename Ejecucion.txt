@@ -1,5 +1,0 @@
-rsconnect deploy shiny /home/usuario/Documentos/TFG --name tfgcarmen --title app.py
-streamlit run app.py
-
-
-

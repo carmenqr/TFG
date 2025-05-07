@@ -1,4 +1,0 @@
-pandas
-shiny
-pyRankMCDA
-scipy

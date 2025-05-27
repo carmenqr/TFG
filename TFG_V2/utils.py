@@ -367,3 +367,38 @@ def draw_distance_heatmap(matrix, labels, title="Mapa de calor"):
     fig.update_layout(height=500)
     st.plotly_chart(fig, use_container_width=True)
 
+def draw_mds_from_distance_matrix(distance_matrix, labels, title="MDS"):
+    try:
+        st.markdown(f"#### {title}")
+        mds = MDS(n_components=2, dissimilarity='precomputed', random_state=42)
+        coords = mds.fit_transform(distance_matrix)
+
+        df_coords = pd.DataFrame(coords, columns=["Dim 1", "Dim 2"])
+        df_coords["Ranking"] = labels
+
+        fig = px.scatter(
+            df_coords,
+            x="Dim 1",
+            y="Dim 2",
+            text="Ranking",
+            width=800,
+            height=500
+        )
+
+        fig.update_traces(
+            marker=dict(size=14),
+            textposition='top center',
+            textfont=dict(size=14)
+        )
+
+        fig.update_layout(
+            showlegend=False,
+            plot_bgcolor="white",
+            xaxis=dict(title="Dim 1", showgrid=True, zeroline=True),
+            yaxis=dict(title="Dim 2", showgrid=True, zeroline=True)
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+    except Exception as e:
+        st.warning(f"No se pudo generar el gráfico MDS: {e}")
+

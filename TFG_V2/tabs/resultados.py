@@ -4,8 +4,8 @@ import pandas as pd
 import numpy as np
 from pyRankMCDA.algorithm import rank_aggregation
 from utils import (
-    custom_heatmap, custom_radar_chart, custom_mds_plot,
-    show_comparison_graphs, ws_coefficient, draw_distance_heatmap
+    custom_heatmap, custom_radar_chart,
+    show_comparison_graphs, ws_coefficient, draw_distance_heatmap, draw_mds_from_distance_matrix
 )
 
 def comparar_algoritmos_tab(db):
@@ -98,7 +98,10 @@ def comparar_algoritmos_tab(db):
                 kendall_matrix[i, j] = ra.kendall_tau_distance(r2, r1)
                 kendall_corr_matrix[i, j] = ra.kendall_tau_corr(r2, r1)
                 spearman_matrix[i, j] = ra.spearman_rank(r2, r1)
-                ws_matrix[i, j] = ws_coefficient(r2, r1)
+                val1 = ws_coefficient(r1, r2)
+                val2 = ws_coefficient(r2, r1)
+                ws_matrix[i, j] = (val1 + val2) / 2
+
 
         
         st.subheader("Tabla con métricas de distancia")
@@ -149,6 +152,25 @@ def comparar_algoritmos_tab(db):
             draw_distance_heatmap(spearman_matrix, ranking_labels, "Coeficiente de Spearman")
         with tabs[3]:
             draw_distance_heatmap(ws_matrix, ranking_labels, "Coeficiente WS")
+        
+        # MDS en pestañas
+        st.markdown("## Representación MDS de rankings")
+
+        # Convertir coeficientes a distancias
+        kdc_dist = 1 - kendall_corr_matrix
+        sp_dist = 1 - spearman_matrix
+        ws_dist = 1 - ws_matrix
+
+        mds_tabs = st.tabs(["Distancia Kendall", "Coef. Kendall", "Coef. Spearman", "Coef. WS"])
+        with mds_tabs[0]:
+            draw_mds_from_distance_matrix(kendall_matrix, ranking_labels, "MDS - Distancia Kendall")
+        with mds_tabs[1]:
+            draw_mds_from_distance_matrix(kdc_dist, ranking_labels, "MDS - Coeficiente de Kendall")
+        with mds_tabs[2]:
+            draw_mds_from_distance_matrix(sp_dist, ranking_labels, "MDS - Coeficiente de Spearman")
+        with mds_tabs[3]:
+            draw_mds_from_distance_matrix(ws_dist, ranking_labels, "MDS - Coeficiente WS")
+
 
 
     else:

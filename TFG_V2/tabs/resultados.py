@@ -6,7 +6,7 @@ import numpy as np
 
 def comparar_algoritmos_tab(db):
     st.header("Tipo de resultado:")
-    modo_comparacion = st.radio("", ["Resultado del problema general", "Resultado por tipo de solución ejecutada"])
+    modo_comparacion = st.radio("Tipo de resultado", ["Resultado del problema general", "Resultado por tipo de solución ejecutada"], label_visibility="collapsed")
     groups = db.connection.execute("SELECT * FROM RankingGroup").fetchall()
     if not groups:
         st.info("No hay grupos disponibles.")

@@ -1,481 +1,110 @@
 import streamlit as st
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-from db import RankingDB  # Se asume que bd.py define la clase RankingDB
-from pyRankMCDA.algorithm import rank_aggregation  # Algoritmo de agregación
-from utils import ws_coefficient, borda_with_ties, copeland_ponderado
-from utils import custom_heatmap, custom_radar_chart, custom_mds_plot
-from utils import show_comparison_graphs
+from db import RankingDB
+
+from tabs.rankings import (
+    añadir_rankings_tab,
+    eliminar_rankings_tab,
+    ver_rankings_tab,
+)
+
+from tabs.agregaciones import (
+    agregar_rankings_tab,
+    ver_agregaciones_tab,
+    eliminar_agregaciones_tab,
+)
+
+from tabs.resultados import comparar_algoritmos_tab
 
 
 def main():
     st.set_page_config(layout="wide")
-    st.title("App para la Agregación de Rankings")
-    db = RankingDB()  # Inicializa la base de datos
-
-    # Se crean las pestañas para la navegación (barra superior)
-    tabs = st.tabs(["Añadir Rankings", "Eliminar Rankings", "Ver Rankings", "Agregar Rankings", "Ver Agregaciones", "Eliminar Agregaciones", "Comparar Algoritmos"])
-
-    # Pestaña 1: Añadir Rankings desde Excel
-    with tabs[0]:
-        st.header("Añadir Rankings desde Excel")
-        uploaded_file = st.file_uploader("Carga un archivo Excel (.xlsx)", type=["xlsx"])
-        if uploaded_file is not None:
-            try:
-                # Leemos el Excel sin cabecera, ya que el formato es personalizado
-                df = pd.read_excel(uploaded_file, header=None)
-                st.write("Vista previa del Excel:")
-                st.dataframe(df, use_container_width=False)
-                if st.button("Guardar"):
-                    # Se asume: 
-                    # - Celda (0,0): nombre del grupo
-                    # - Fila 0, columnas 1 en adelante: nombres de rankings (ej. R1, R2, …)
-                    # - Columna 0, filas 1 en adelante: nombres de elementos
-                    # - Resto de celdas: posiciones
-                    group_name = df.iloc[0, 0]
-                    aggregation_type = ""
-                    if df.shape[1] > 1:
-                        aggregation_type = str(df.iloc[0, 1]).strip().lower()
-                    group_id = db.add_group(group_name, aggregation_type)
-
-                    
-                    # Guardar rankings (columnas)
-                    ranking_ids = {}
-                    for j in range(1, df.shape[1]):
-                        ranking_name = df.iloc[1, j]
-                        ranking_id = db.add_ranking(group_id, ranking_name, j)
-                        ranking_ids[j] = ranking_id
-                    
-                    # Guardar elementos (filas)
-                    element_ids = {}
-                    for i in range(2, df.shape[0]):
-                        element_name = df.iloc[i, 0]
-                        element_id = db.add_ranking_element(group_id, element_name, i)
-                        element_ids[i] = element_id
-                    
-                    # Guardar valores de cada ranking (intersección de filas y columnas)
-                    for i in range(2, df.shape[0]):
-                        for j in range(1, df.shape[1]):
-                            value = df.iloc[i, j]
-                            try:
-                                pos = int(value)
-                            except:
-                                pos = value
-                            db.add_ranking_value(ranking_ids[j], element_ids[i], pos)
-                    
-                    st.success("Datos guardados correctamente en la base de datos.")
-            except Exception as e:
-                st.error(f"Error al procesar el archivo: {e}")
-
-    # Pestaña 2: Eliminar Rankings (eliminar grupos de rankings)
-    with tabs[1]:
-        st.header("Eliminar Grupo de Rankings")
-        groups = db.connection.execute("SELECT * FROM RankingGroup").fetchall()
-        if groups:
-            #group_options = {f"{group['id']} - {group['nombre']}": group['id'] for group in groups}
-            group_options = {f"{group['nombre']} (Grupo: {group['id']})": group['id'] for group in groups}
-            selected_group = st.selectbox("Selecciona el grupo a eliminar", list(group_options.keys()))
-            if st.button("Eliminar grupo"):
-                group_id = group_options[selected_group]
-                try:
-                    # Eliminar datos asociados en el orden adecuado
-                    db.connection.execute("DELETE FROM RankingValue WHERE ranking_id IN (SELECT id FROM Ranking WHERE grupo_id = ?)", (group_id,))
-                    db.connection.execute("DELETE FROM Ranking WHERE grupo_id = ?", (group_id,))
-                    db.connection.execute("DELETE FROM RankingElement WHERE grupo_id = ?", (group_id,))
-                    db.connection.execute("DELETE FROM AggregatedRankingValue WHERE aggregated_ranking_id IN (SELECT id FROM AggregatedRanking WHERE grupo_id = ?)", (group_id,))
-                    db.connection.execute("DELETE FROM AggregatedRanking WHERE grupo_id = ?", (group_id,))
-                    db.connection.execute("DELETE FROM RankingGroup WHERE id = ?", (group_id,))
-                    db.connection.commit()
-                    st.success("Grupo eliminado correctamente.")
-                except Exception as e:
-                    st.error(f"Error al eliminar el grupo: {e}")
-        else:
-            st.info("No hay grupos disponibles para eliminar.")
-
-   # Pestaña 3: Ver Rankings (vista pivot similar al Excel)
-    with tabs[2]:
-        st.header("Ver Rankings")
-        groups = db.connection.execute("SELECT * FROM RankingGroup").fetchall()
-        if groups:
-            # Crea un diccionario para el selector: "nombre (ID)" -> id
-            group_options = {f"{group['nombre']} (Grupo: {group['id']})": group['id'] for group in groups}
-            selected_group = st.selectbox("Selecciona el grupo a visualizar", list(group_options.keys()))
-            group_id = group_options[selected_group]
-            pivot_data = db.get_group_excel_format(group_id)
-            if pivot_data:
-                df_pivot = pd.DataFrame(pivot_data["rows"])
-                # Asigna el nombre de las columnas: la primera columna "Elemento"
-                # y luego los nombres de los rankings (por ejemplo, R1, R2, R3, R4)
-                df_pivot.columns = ["Elemento"] + pivot_data["ranking_names"]
-                st.dataframe(df_pivot, use_container_width=False)
-            else:
-                st.write("No hay datos para este grupo.")
-        else:
-            st.info("No hay grupos de rankings guardados.")
+    
+    st.markdown("""
+        <style>
+            .app-title {
+                font-size: 3em;
+                font-weight: bold;
+                color: #003366;
+                text-align: center;
+                margin-bottom: 0.3em;
+            }
+            .app-subtitle {
+                font-size: 1.2em;
+                color: #333333;
+                text-align: center;
+                max-width: 750px;
+                margin: 0 auto 2em auto;
+            }
+            .app-question {
+                font-size: 1.1em;
+                text-align: center;
+                margin-top: 2em;
+                margin-bottom: 1em;
+            }
+            div.stButton > button {
+                display: block;
+                margin: 0 auto;
+                background-color: #0066cc;
+                color: white;
+                font-weight: bold;
+                font-size: 1.2em;
+                padding: 0.6em 1.5em;
+                border-radius: 8px;
+            }
+        </style>
+    """, unsafe_allow_html=True)
 
 
-    # Pestaña 4: Agregar Rankings (Ejecutar la agregación para generar un ranking agregado)
-    with tabs[3]:
-        st.header("Agregar Rankings")
-        groups = db.connection.execute("SELECT * FROM RankingGroup").fetchall()
-        if groups:
-            #group_options = {f"{group['id']} - {group['nombre']}": group['id'] for group in groups}
-            group_options = {f"{group['nombre']} (Grupo: {group['id']})": group['id'] for group in groups}
-            selected_group = st.selectbox("Selecciona el grupo de rankings a agregar", list(group_options.keys()))
-            
-            group_id = group_options[selected_group]
-            agg_row = db.connection.execute("SELECT aggregation_type FROM RankingGroup WHERE id = ?", (group_id,)).fetchone()
-            agg_type = agg_row["aggregation_type"].strip().lower() if agg_row and agg_row["aggregation_type"] else ""
+    if "start_app" not in st.session_state:
+        st.session_state["start_app"] = False
+
+    if not st.session_state.get("start_app", False):
+        st.markdown('<div class="app-title">Resolutor de Problemas de Agregación de Rankings</div>', unsafe_allow_html=True)
+        st.markdown("""
+            <div class="app-subtitle">
+            Esta herramienta está diseñada con el objetivo asistirle en la resolución de problemas
+            de agregación de rankings de forma eficaz, intuitiva y confiable.
+            </div>
+            <div class="app-subtitle">
+                Con ella podrá importar conjuntos de rankings desde archivos excel, aplicar distintos
+                métodos de agregación personalizados y visualizar graficamente los resultados obtenidos.
+            </div>
+        """, unsafe_allow_html=True)
+        st.markdown('<div class="app-question">¿Desea comenzar?</div>', unsafe_allow_html=True)
+
+        if st.button("Empezar"):
+            st.session_state["start_app"] = True
+            st.rerun()
+
+        st.stop()
 
 
-            # Mostrar opciones según tipo detectado
-            if agg_type == "empates":
-                algorithm_options = ["Borda con Empates"]
-                st.info("Solo se permite el algoritmo **Borda** porque se detectaron empates en el archivo Excel.")
-            elif agg_type == "ponderaciones":
-                algorithm_options = ["Borda Ponderado", "Copeland Ponderado"]
-                st.info("Solo se permiten los algoritmos **Borda** y **Copeland** porque se detectaron ponderaciones.")
-            else:
-                algorithm_options = ["Borda", "Copeland", "Kemey-Young", "Schulze", "Footrule"]
+    db = RankingDB()
 
-            algorithm = st.selectbox("Selecciona el algoritmo de agregación", algorithm_options)
-
-            if st.button("Ejecutar Agregación"):
-                group_id = group_options[selected_group]
-                rankings = db.get_rankings(group_id)
-                if not rankings:
-                    st.error("No hay rankings en este grupo.")
-                else:
-                    ranking_lists = []
-                    ponderaciones = []
-
-                    # Si es tipo ponderaciones, extraer los pesos desde la fila 2
-                    if agg_type == "ponderaciones":
-                        pivot_data = db.get_group_excel_format(group_id)
-                        df_ponderacion = pd.DataFrame(pivot_data["rows"])
-                        try:
-                            ponderaciones = [float(val) for val in df_ponderacion.iloc[0, 1:].tolist()]
-                        except Exception as e:
-                            st.error("Error al leer las ponderaciones. Asegúrate de que estén en la fila 2 del Excel.")
-                            return
-
-                    for idx, ranking in enumerate(rankings):
-                        values = db.get_ranking_values(ranking['id'])
-
-                        if agg_type == "ponderaciones":
-                            values_sorted = sorted([v for v in values if v['row_index'] > 2], key=lambda x: x['row_index'])
-                        else:
-                            values_sorted = sorted(values, key=lambda x: x['row_index'])
-
-                        try:
-                            ranking_list = [int(item['posicion']) for item in values_sorted]
-                            # Aplicar ponderación si corresponde
-                            if agg_type == "ponderaciones":
-                                weight = ponderaciones[idx]
-                                ranking_list = [val * weight for val in ranking_list]
-                        except Exception as e:
-                            st.error("Error al convertir o ponderar los valores del ranking.")
-                            return
-
-                        ranking_lists.append(ranking_list)
-
-                        
-
-                    
-                    try:
-                        ranks_array = np.array(ranking_lists).T
-                    except Exception as e:
-                        st.error("Error al convertir los rankings a matriz numérica.")
-                        return
-
-                    ra = rank_aggregation(ranks_array)
-                    if algorithm == "Borda" or algorithm == "Borda Ponderado":
-                        elementos_ordenados = ra.borda_method(verbose=False)
-                    elif algorithm == "Borda con Empates":
-                        aggregated_ranking = borda_with_ties(ranks_array)
-                    elif algorithm == "Copeland":
-                        elementos_ordenados = ra.copeland_method(verbose=False)
-                    elif algorithm == "Copeland Ponderado":
-                        aggregated_ranking = copeland_ponderado(ranks_array, ponderaciones)
-                    elif algorithm == "Kemey-Young":
-                        aggregated_ranking = ra.kemeny_young(verbose=False)
-                    elif algorithm == "Schulze":
-                        elementos_ordenados = ra.schulze_method(verbose=False)
-                    elif algorithm == "Footrule":
-                        elementos_ordenados = ra.footrule_rank_aggregation(verbose=False)
-
-                    # Convertimos de "elementos en orden" → "posición final por elemento", menos en kemey que los devuelve así
-                    if(algorithm != "Kemey-Young" and algorithm != "Borda con Empates" and algorithm != "Copeland Ponderado"):
-                        aggregated_ranking = np.empty_like(elementos_ordenados)
-                        aggregated_ranking[elementos_ordenados - 1] = np.arange(1, len(elementos_ordenados) + 1)
-                    
-                    st.subheader("Ranking Agregado")
-                    st.write(aggregated_ranking)
-                    
-                    # Guardar el ranking agregado en la BD
-                    agg_id = db.add_aggregated_ranking(group_id, algorithm)
-                    elements = db.get_ranking_elements(group_id)
-
-                    # Si es ponderaciones, excluir la fila de ponderaciones
-                    if agg_type == "ponderaciones":
-                        elements_sorted = sorted([e for e in elements if e['row_index'] > 2], key=lambda x: x['row_index'])
-                    else:
-                        elements_sorted = sorted(elements, key=lambda x: x['row_index'])
-
-                    for idx, elem in enumerate(elements_sorted):
-                        try:
-                            pos = int(aggregated_ranking[idx])
-                        except Exception:
-                            pos = aggregated_ranking[idx]
-                        db.add_aggregated_ranking_value(agg_id, elem['id'], pos)
+    main_section = st.sidebar.radio("PASOS:", [
+        "📝 1º) NUEVO PROBLEMA",
+        "⚙️ 2º) RESOLVER PROBLEMA",
+        "📊 3º) VER RESULTADOS"
+    ])
 
 
+    if main_section == "📝 1º) NUEVO PROBLEMA":
+        st.title("NUEVO PROBLEMA")
+        sub_tabs = st.tabs(["Añadir Rankings", "Eliminar Rankings", "Ver Rankings"])
+        with sub_tabs[0]: añadir_rankings_tab(db)
+        with sub_tabs[1]: eliminar_rankings_tab(db)
+        with sub_tabs[2]: ver_rankings_tab(db)
 
+    elif main_section == "⚙️ 2º) RESOLVER PROBLEMA":
+        st.title("RESOLVER PROBLEMA")
+        sub_tabs = st.tabs(["Resolver", "Ver Soluciones", "Eliminar Soluciones"])
+        with sub_tabs[0]: agregar_rankings_tab(db)
+        with sub_tabs[1]: ver_agregaciones_tab(db)
+        with sub_tabs[2]: eliminar_agregaciones_tab(db)
 
-                    st.success("Ranking agregado guardado correctamente.")
-        else:
-            st.info("No hay grupos disponibles para agregar rankings.")
-
-   # Pestaña 5: Ver Agregaciones
-    with tabs[4]:
-        st.header("Ver Agregaciones")
-        # Selector de grupo: muestra "NombreDelGrupo (Grupo: id)"
-        groups = db.connection.execute("SELECT * FROM RankingGroup").fetchall()
-        if groups:
-            group_options = {f"{group['nombre']} (Grupo: {group['id']})": group['id'] for group in groups}
-            selected_group = st.selectbox("Selecciona el grupo a ver", list(group_options.keys()))
-            group_id = group_options[selected_group]
-            
-            # Selector de agregación para el grupo seleccionado: muestra "Algoritmo (Agregación: id)"
-            agg_groups = db.connection.execute("SELECT * FROM AggregatedRanking WHERE grupo_id = ?", (group_id,)).fetchall()
-            if agg_groups:
-                agg_options = {f"{agg['algoritmo']} (Agregación: {agg['id']})": agg['id'] for agg in agg_groups}
-                selected_agg = st.selectbox("Selecciona la agregación a ver", list(agg_options.keys()))
-                agg_id = agg_options[selected_agg]
-                
-                # Obtenemos la vista pivot del grupo (tabla completa con todos los rankings)
-                pivot_data = db.get_group_excel_format(group_id)
-                if pivot_data:
-                    pivot_df = pd.DataFrame(pivot_data["rows"])
-                    pivot_df.columns = ["Elemento"] + pivot_data["ranking_names"]
-                    
-                    # Obtenemos el ranking agregado para el grupo
-                    agg_data = db.get_aggregated_ranking(agg_id)
-                    if not agg_data:
-                        st.write("No hay valores para esta agregación.")
-                    else:
-                        # Convertimos cada fila a diccionario para garantizar las claves correctas
-                        agg_df = pd.DataFrame([dict(row) for row in agg_data])
-                        # Aseguramos que la columna del nombre del elemento se llame "Elemento"
-                        if "elemento" in agg_df.columns and "Elemento" not in agg_df.columns:
-                            agg_df.rename(columns={"elemento": "Elemento"}, inplace=True)
-                        # Renombramos la columna 'posicion' a 'Ranking Agregado'
-                        agg_df.rename(columns={"posicion": "Ranking Agregado"}, inplace=True)
-                        # Fusionamos usando la columna "Elemento"
-                        merged_df = pivot_df.merge(agg_df, on="Elemento", how="left")
-                        st.dataframe(merged_df, use_container_width=False)
-
-                else:
-                    st.write("No hay datos para este grupo.")
-            else:
-                st.info("No hay agregaciones para este grupo.")
-        else:
-            st.info("No hay grupos de rankings guardados.")
-
-
-    # Pestaña 6: Eliminar Agregaciones
-    with tabs[5]:
-        st.header("Eliminar Agregaciones")
-        # Primero, obtenemos los grupos de rankings
-        groups = db.connection.execute("SELECT * FROM RankingGroup").fetchall()
-        if groups:
-            group_options = {f"{group['nombre']} (Grupo: {group['id']})": group['id'] for group in groups}
-            selected_group = st.selectbox("Selecciona el grupo", list(group_options.keys()))
-            group_id = group_options[selected_group]
-            
-            # Ahora, obtenemos las agregaciones correspondientes al grupo seleccionado
-            agg_groups = db.connection.execute("SELECT * FROM AggregatedRanking WHERE grupo_id = ?", (group_id,)).fetchall()
-            if agg_groups:
-                agg_options = {f"{agg['algoritmo']} (Agregación: {agg['id']})": agg['id'] for agg in agg_groups}
-                selected_agg = st.selectbox("Selecciona la agregación a eliminar", list(agg_options.keys()))
-                agg_id = agg_options[selected_agg]
-                
-                if st.button("Eliminar Agregación"):
-                    try:
-                        db.delete_aggregated_ranking(agg_id)
-                        st.success("Agregación eliminada correctamente.")
-                    except Exception as e:
-                        st.error(f"Error al eliminar la agregación: {e}")
-            else:
-                st.info("No hay agregaciones para el grupo seleccionado.")
-        else:
-            st.info("No hay grupos de rankings guardados.")
-
-
-
-    # Pestaña 7: Comparar Agregaciones
-    with tabs[6]:
-        st.header("Comparar Algoritmos")
-        modo_comparacion = st.radio("Modo de comparación:", ["Por algoritmo de agregación", "Por grupo"])
-        groups = db.connection.execute("SELECT * FROM RankingGroup").fetchall()
-        if not groups:
-            st.info("No hay grupos disponibles.")
-        else:
-            group_options = {f"{group['nombre']} (Grupo: {group['id']})": group['id'] for group in groups}
-            selected_group = st.selectbox("Selecciona el grupo a comparar", list(group_options.keys()))
-            group_id = group_options[selected_group]
-
-            if modo_comparacion == "Por algoritmo de agregación":                    
-                # Recuperamos los rankings individuales del grupo
-                rankings = db.get_rankings(group_id)
-                if len(rankings) < 2:
-                    st.warning("Necesitas al menos dos rankings para comparar.")
-                else:
-                    # Selector de la agregación disponible para el grupo
-                    agg_groups = db.connection.execute("SELECT * FROM AggregatedRanking WHERE grupo_id = ?", (group_id,)).fetchall()
-                    if not agg_groups:
-                        st.error("No hay ranking agregado para este grupo. Ejecuta una agregación primero.")
-                    else:
-                        agg_options = {f"{agg['algoritmo']} (Agregación: {agg['id']})": agg['id'] for agg in agg_groups}
-                        selected_agg = st.selectbox("Selecciona el algoritmo de agregación a comparar", list(agg_options.keys()))
-                        agg_id = agg_options[selected_agg]
-                        
-                        # Obtenemos la vista pivot del grupo (tabla completa con todos los rankings)
-                        pivot_data = db.get_group_excel_format(group_id)
-                        if pivot_data:
-                            pivot_df = pd.DataFrame(pivot_data["rows"])
-                            pivot_df.columns = ["Elemento"] + pivot_data["ranking_names"]
-                            # Obtenemos el ranking agregado para el grupo
-                            agg_data = db.get_aggregated_ranking(agg_id)
-                            if agg_data:
-                                agg_df = pd.DataFrame([dict(row) for row in agg_data])
-                                if "elemento" in agg_df.columns and "Elemento" not in agg_df.columns:
-                                    agg_df.rename(columns={"elemento": "Elemento"}, inplace=True)
-                                agg_df.rename(columns={"posicion": "Ranking Agregado"}, inplace=True)
-                                merged_df = pivot_df.merge(agg_df, on="Elemento", how="left")
-                                # Se omite la visualización de merged_df por separado
-                            else:
-                                st.error("No se encontraron datos en el ranking agregado.")
-                                return
-                        else:
-                            st.write("No hay datos para este grupo.")
-                            return
-                        
-                        # --- Calcular las comparaciones para cada ranking individual ---
-                        agg_data = db.get_aggregated_ranking(agg_id)
-                        agg_row = db.connection.execute("SELECT aggregation_type FROM RankingGroup WHERE id = ?", (group_id,)).fetchone()
-                        agg_type = agg_row["aggregation_type"].strip().lower() if agg_row and agg_row["aggregation_type"] else ""
-
-                        if agg_data:
-                            agg_ranking = [int(item['posicion']) for item in agg_data]
-                        else:
-                            st.error("No se pudo obtener el ranking agregado para comparaciones.")
-                            return
-                                
-                        kendall_list = []
-                        kendall_corr_list = []
-                        spearman_list = []
-                        ws_list = []
-                        
-                        for ranking in rankings:
-                            values = db.get_ranking_values(ranking['id'])
-                            if agg_type == "ponderaciones":
-                                values_sorted = sorted([v for v in values if v['row_index'] > 2], key=lambda x: x['row_index'])
-                            else:
-                                values_sorted = sorted(values, key=lambda x: x['row_index'])
-
-                            try:
-                                individual = [int(item['posicion']) for item in values_sorted]
-                            except Exception as e:
-                                st.error("Error al convertir ranking individual a números.")
-                                continue
-                            if len(individual) != len(agg_ranking):
-                                st.error(f"El ranking individual tiene {len(individual)} elementos, pero el ranking agregado tiene {len(agg_ranking)} elementos.")
-                                continue
-                            ra = rank_aggregation(np.array(agg_ranking).reshape(-1, 1))
-                            kd = ra.kendall_tau_distance(np.array(individual), np.array(agg_ranking))
-                            kdc = ra.kendall_tau_corr(np.array(individual), np.array(agg_ranking))
-                            sp = ra.spearman_rank(np.array(individual), np.array(agg_ranking))
-                            ws_val = ws_coefficient(individual, agg_ranking)
-                            kendall_list.append(kd)
-                            kendall_corr_list.append(kdc)
-                            spearman_list.append(sp)
-                            ws_list.append(ws_val)
-                        
-                        # --- Agregar las filas de las comparaciones a la tabla ---
-                        ranking_names = pivot_data["ranking_names"]
-                        distance_rows = []
-                        row_kendall = {"Elemento": "Distancia Kendall"}
-                        for i, name in enumerate(ranking_names):
-                            row_kendall[name] = kendall_list[i] if i < len(kendall_list) else np.nan
-                        row_kendall["Ranking Agregado"] = np.nan
-                        distance_rows.append(row_kendall)
-                        
-                        row_kendall_corr = {"Elemento": "Coeficiente Kendall"}
-                        for i, name in enumerate(ranking_names):
-                            row_kendall_corr[name] = kendall_corr_list[i] if i < len(kendall_corr_list) else np.nan
-                        row_kendall_corr["Ranking Agregado"] = np.nan
-                        distance_rows.append(row_kendall_corr)
-                        
-                        row_spearman = {"Elemento": "Coeficiente Spearman"}
-                        for i, name in enumerate(ranking_names):
-                            row_spearman[name] = spearman_list[i] if i < len(spearman_list) else np.nan
-                        row_spearman["Ranking Agregado"] = np.nan
-                        distance_rows.append(row_spearman)
-                        
-                        row_ws = {"Elemento": "Coeficiente WS"}
-                        for i, name in enumerate(ranking_names):
-                            row_ws[name] = ws_list[i] if i < len(ws_list) else np.nan
-                        row_ws["Ranking Agregado"] = np.nan
-                        distance_rows.append(row_ws)
-                        
-                        distance_df = pd.DataFrame(distance_rows)
-                        final_df = pd.concat([merged_df, distance_df], ignore_index=True)
-                        
-                        st.subheader("Tabla comparativa con métricas de distancia")
-                        st.write("Distancias entre el ranking agregado (con el algoritmo seleccionado) y los rankings individuales")
-                        st.dataframe(final_df, use_container_width=False)
-                        show_comparison_graphs(merged_df, ranking_names, kendall_list, kendall_corr_list, spearman_list, ws_list)
-
-            else:  # Por Grupo
-                agg_groups = db.connection.execute("SELECT * FROM AggregatedRanking WHERE grupo_id = ?", (group_id,)).fetchall()
-                if not agg_groups:
-                    st.warning("Este grupo no tiene agregaciones todavía.")
-                else:
-                    elementos = db.get_ranking_elements(group_id)
-                    elementos_sorted = sorted(elementos, key=lambda x: x['row_index'])
-                    element_names = [e['nombre'] for e in elementos_sorted]
-
-                    df_methods = pd.DataFrame()
-                    for agg in agg_groups:
-                        agg_id = agg["id"]
-                        algoritmo = agg["algoritmo"]                      
-                        agg_values = db.get_aggregated_ranking(agg_id)
-                        agg_values_sorted = sorted(agg_values, key=lambda x: x['Elemento'])
-                        try:
-                            posiciones = [int(row["posicion"]) for row in agg_values_sorted]
-                            if (element_names[0] == "Ponderación"):
-                                del element_names[0]
-                            if len(posiciones) == len(element_names):
-                                df_methods[algoritmo] = posiciones
-                        except:
-                            st.warning(f"No se pudieron cargar correctamente los datos de {algoritmo}.")
-
-                    df_methods.index = element_names
-
-                    if not df_methods.empty:
-                        st.write("Gráficas comparativas entre los rankings agregados con los diferentes algoritmos de agregación aplicados al grupo de rankings seleccionado")
-                        custom_heatmap(df_methods)
-                        custom_radar_chart(df_methods)
-                        custom_mds_plot(df_methods)
-                    else:
-                        st.warning("No se generaron datos suficientes para visualizar rankings.")
-
-
-
-
-
+    elif main_section == "📊 3º) VER RESULTADOS":
+        st.title("VER RESULTADOS")
+        comparar_algoritmos_tab(db)
 
 
 if __name__ == '__main__':

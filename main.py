@@ -75,6 +75,12 @@ def main():
         if st.button("Empezar"):
             st.session_state["start_app"] = True
             st.rerun()
+        # Pie de página discreto
+        st.markdown("""
+            <p style='text-align: center; font-size: 0.8em; color: gray; margin-top: 2em;'>
+                Desarrollada por <strong>Carmen Quiles Ramírez</strong> como parte del Trabajo de Fin de Grado (TFG) – Junio de 2025.
+            </p>
+        """, unsafe_allow_html=True)
 
         st.stop()
 

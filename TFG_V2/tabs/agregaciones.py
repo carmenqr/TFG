@@ -95,10 +95,10 @@ def agregar_rankings_tab(db):
                     aggregated_ranking = np.empty_like(elementos_ordenados)
                     aggregated_ranking[elementos_ordenados - 1] = np.arange(1, len(elementos_ordenados) + 1)
                 
-                st.subheader("Ranking Agregado")
+                st.subheader("Ranking de consenso")
                 st.write(aggregated_ranking)
                 
-                # Guardar el ranking agregado en la BD
+                # Guardar el ranking de consenso en la BD
                 agg_id = db.add_aggregated_ranking(group_id, algorithm)
                 elements = db.get_ranking_elements(group_id)
 
@@ -114,7 +114,7 @@ def agregar_rankings_tab(db):
                     except Exception:
                         pos = aggregated_ranking[idx]
                     db.add_aggregated_ranking_value(agg_id, elem['id'], pos)
-                st.success("Ranking agregado guardado correctamente.")
+                st.success("Ranking de consenso guardado correctamente.")
     else:
         st.info("No hay problemas disponibles para resolver.")
         
@@ -131,7 +131,7 @@ def ver_agregaciones_tab(db):
         agg_groups = db.connection.execute("SELECT * FROM AggregatedRanking WHERE grupo_id = ?", (group_id,)).fetchall()
         if agg_groups:
             agg_options = {f"{agg['algoritmo']} (Agregación: {agg['id']})": agg['id'] for agg in agg_groups}
-            selected_agg = st.selectbox("Seleccione el algoritmo del que desee ver la solucón para el problema seleccionado", list(agg_options.keys()))
+            selected_agg = st.selectbox("Seleccione el algoritmo del que desee ver la solución para el problema seleccionado", list(agg_options.keys()))
             agg_id = agg_options[selected_agg]
             
             # Obtenemos la vista pivot del grupo (tabla completa con todos los rankings)
@@ -140,7 +140,7 @@ def ver_agregaciones_tab(db):
                 pivot_df = pd.DataFrame(pivot_data["rows"])
                 pivot_df.columns = ["Elemento"] + pivot_data["ranking_names"]
                 
-                # Obtenemos el ranking agregado para el grupo
+                # Obtenemos el ranking de consenso para el grupo
                 agg_data = db.get_aggregated_ranking(agg_id)
                 if not agg_data:
                     st.write("No hay valores para esta agregación.")
@@ -150,8 +150,8 @@ def ver_agregaciones_tab(db):
                     # Aseguramos que la columna del nombre del elemento se llame "Elemento"
                     if "elemento" in agg_df.columns and "Elemento" not in agg_df.columns:
                         agg_df.rename(columns={"elemento": "Elemento"}, inplace=True)
-                    # Renombramos la columna 'posicion' a 'Ranking Agregado'
-                    agg_df.rename(columns={"posicion": "Ranking Agregado"}, inplace=True)
+                    # Renombramos la columna 'posicion' a 'Ranking de consenso'
+                    agg_df.rename(columns={"posicion": "Ranking de consenso"}, inplace=True)
                     # Fusionamos usando la columna "Elemento"
                     merged_df = pivot_df.merge(agg_df, on="Elemento", how="left")
                     st.dataframe(merged_df, use_container_width=False)

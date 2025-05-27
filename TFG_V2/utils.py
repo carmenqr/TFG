@@ -87,7 +87,7 @@ def copeland_ponderado(rankings_matrix, pesos):
     return final_ranking
 
 def custom_heatmap(df):
-    st.markdown("#### Heatmap con las posiciones de los rankings agregados")
+    st.markdown("#### Mapa de calor con las posiciones de los rankings de consensos")
     try:
         z = df.values
         x = list(df.columns)
@@ -130,37 +130,38 @@ def custom_heatmap(df):
         return None
 
 def custom_radar_chart(df):
-    st.markdown("#### Radar Charts por Método de Agregación")
-    num_vars = df.shape[0]
+    st.markdown("#### Radar para ver la similitud entre los rankings de consenso")
+
     categories = list(df.index)
-    angles = np.linspace(0, 2 * np.pi, num_vars, endpoint=False).tolist()
-    angles += angles[:1]
+    fig = go.Figure()
 
-    n_cols = 5
-    n_rows = int(np.ceil(len(df.columns) / n_cols))
-    fig, axs = plt.subplots(n_rows, n_cols, figsize=(2.2 * n_cols, 2.2 * n_rows), subplot_kw=dict(polar=True))
-    axs = axs.flatten()
-
-    colors = plt.cm.tab10(np.linspace(0, 1, len(df.columns)))
-
-    for i, (method, color) in enumerate(zip(df.columns, colors)):
-        ax = axs[i]
+    for method in df.columns:
         values = df[method].tolist()
-        values += values[:1]
-        ax.plot(angles, values, label=method, color=color)
-        ax.fill(angles, values, alpha=0.1, color=color)
-        ax.set_xticks(angles[:-1])
-        ax.set_xticklabels(categories, fontsize=6)
-        ax.set_title(method, fontsize=8)
-        ax.set_yticks(range(1, num_vars + 1))
-        ax.set_yticklabels(range(1, num_vars + 1), fontsize=5, color='gray')
-        ax.yaxis.grid(True, linestyle='--', linewidth=0.5, color='lightgray')
+        values += values[:1]  # Cierra el círculo
+        fig.add_trace(go.Scatterpolar(
+            r=values,
+            theta=categories + [categories[0]],
+            fill='toself',
+            name=method,
+            opacity=0.6
+        ))
 
-    for j in range(i + 1, len(axs)):
-        fig.delaxes(axs[j])
+    fig.update_layout(
+        polar=dict(
+            radialaxis=dict(
+                visible=True,
+                range=[1, df.max().max()],
+                tickfont=dict(size=12)
+            ),
+            angularaxis=dict(tickfont=dict(size=12))
+        ),
+        legend=dict(font=dict(size=12)),
+        showlegend=True,
+        height=600
+    )
 
-    plt.tight_layout()
-    st.pyplot(fig)
+    st.plotly_chart(fig, use_container_width=True)
+
     
 def custom_mds_plot(df):
     st.markdown("#### MDS - Comparación de Distancias entre Métodos de agregación")
@@ -251,7 +252,7 @@ def custom_mds_plot(df):
 
     st.plotly_chart(fig, use_container_width=True)
 
-    st.markdown("#### Tabla de distancias entre rankings agregados con los diferentes métodos de agregación")
+    st.markdown("#### Tabla de distancias entre rankings de consenso con los diferentes métodos de agregación")
     st.dataframe(pd.DataFrame(resumen))
 
 # GRÁFICAS PARA COMPARACIÓN POR ALGORITMO DE AGREGACIÓN
@@ -349,10 +350,20 @@ def plot_all_distances_grouped(ranking_names, kendall, kendall_corr, spearman, w
 
 # ORGANIZADOR DE GRÁFICAS POR ALGORITMO DE AGREGACIÓN
 def show_comparison_graphs(merged_df, ranking_names, kendall_list, kendall_corr_list, spearman_list, ws_list):
-    st.markdown("### Comparación de posiciones")
+    st.markdown("### Comparación de posiciones entre rankings individuales y ranking de consenso")
     plot_ranking_positions(merged_df)
     
     st.markdown("### Comparación de métricas")   
-    plot_all_metrics(ranking_names, kendall_list, kendall_corr_list, spearman_list, ws_list)
+    st.markdown("Métricas entre los rankings individuales con respecto a el ranking de consenso")   
+    #plot_all_metrics(ranking_names, kendall_list, kendall_corr_list, spearman_list, ws_list)
 
     plot_all_distances_grouped(ranking_names, kendall_list, kendall_corr_list, spearman_list, ws_list)
+
+def draw_distance_heatmap(matrix, labels, title="Mapa de calor"):
+    df_matrix = pd.DataFrame(matrix, index=labels, columns=labels)
+
+    st.markdown(f"#### {title}")
+    fig = px.imshow(df_matrix, text_auto=True, aspect="auto", color_continuous_scale='RdBu', title=title)
+    fig.update_layout(height=500)
+    st.plotly_chart(fig, use_container_width=True)
+

@@ -59,7 +59,7 @@ def main():
         st.session_state["start_app"] = False
 
     if not st.session_state.get("start_app", False):
-        st.markdown('<div class="app-title">Resolutor de Problemas de Agregación de Rankings</div>', unsafe_allow_html=True)
+        st.markdown('<div class="app-title">ARPAR: Asistente para Resolución de Problemas de Agregación de Rankings</div>', unsafe_allow_html=True)
         st.markdown("""
             <div class="app-subtitle">
             Esta herramienta está diseñada con el objetivo asistirle en la resolución de problemas

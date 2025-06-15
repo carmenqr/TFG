@@ -26,6 +26,16 @@ El contenido se organiza en los siguientes bloques principales:
 - **Capítulo 5 - Caso práctico (ODS):** Aplicación de los algoritmos al análisis del cumplimiento de los ODS por países.
 - **Capítulo 6 - Conclusiones:** Resultados, ventajas de cada método, y líneas de trabajo futuro.
 
+## 📄 Contenidos del repositorio
+
+- `TFG_CarmenQuilesRamirez.pdf`: Memoria completa del Trabajo de Fin de Grado.  
+- `main.py`: Módulo principal con la interfaz de inicio de la herramienta.  
+- `db.py`: Módulo para la gestión de la base de datos SQLite.  
+- `rankings.db`: Base de datos con rankings de prueba o generados por el usuario.  
+- `utils.py`: Funciones de utilidad para operaciones auxiliares.  
+- `tabs/`: Carpeta con las pestañas de la interfaz gráfica (implementación modular de vistas).   
+- `requireiments.txt`: Dependencias necesarias para ejecutar el proyecto.  
+
 ## 📚 Referencias clave
 
 - Dwork et al. (2001) - Rank aggregation for the Web  
